@@ -41,7 +41,21 @@ Copy `config.example.toml` there and edit. The OpenAI key is read from, in order
 2. `openai_api_key` in the config file
 3. `~/.config/openai.key`
 
-## Build
+## Install (Windows)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+This builds the release binary (if needed), copies it to
+`%LOCALAPPDATA%\Programs\voice-dictate`, creates a Start Menu shortcut so it
+shows up as an app, and launches it. To remove everything:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+## Build from source
 
 Requires a Rust toolchain and a C linker.
 
@@ -59,10 +73,9 @@ sudo apt install libasound2-dev libdbus-1-dev libxcb1-dev pkg-config
 
 ## Usage
 
-Run the binary. A microphone icon appears in the tray. Default hotkey is
-**Ctrl+Shift+Space**: press to start recording, press again to stop and
-transcribe. A short beep marks start and stop. The tray menu offers
-"Start at login" and "Quit".
+A microphone icon appears in the tray. Default hotkey is **Ctrl+Shift+Space**:
+press to start recording, press again to stop and transcribe. A short beep marks
+start and stop. The tray menu offers "Start at login" and "Quit".
 
 ## License
 
