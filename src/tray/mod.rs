@@ -5,13 +5,15 @@ pub use runner::run;
 #[cfg(windows)]
 mod runner {
     use super::*;
+    use global_hotkey::{hotkey::HotKey, GlobalHotKeyManager};
 
     pub fn run(
         state: AppState,
         on_toggle: impl Fn() + Send + 'static,
-        on_quit: impl Fn() + Send + 'static,
+        manager: GlobalHotKeyManager,
+        current: HotKey,
     ) {
-        windows::run_tray(state, on_toggle, on_quit);
+        windows::run_tray(state, on_toggle, manager, current);
     }
 }
 

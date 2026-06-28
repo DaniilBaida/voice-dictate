@@ -62,6 +62,33 @@ pub fn config_file() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+/// Persist a new hotkey to the config file, replacing the existing `hotkey`
+/// line (preserving comments) or appending one if absent.
+pub fn save_hotkey(combo: &str) -> std::io::Result<()> {
+    let path = config_file();
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let mut out = String::new();
+    let mut replaced = false;
+    for line in existing.lines() {
+        if line.trim_start().starts_with("hotkey")
+            && line.split_once('=').map(|(k, _)| k.trim() == "hotkey").unwrap_or(false)
+        {
+            out.push_str(&format!("hotkey = \"{combo}\""));
+            replaced = true;
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    if !replaced {
+        out.push_str(&format!("hotkey = \"{combo}\"\n"));
+    }
+    fs::write(path, out)
+}
+
 pub fn load() -> Config {
     let path = config_file();
     if !path.exists() {
