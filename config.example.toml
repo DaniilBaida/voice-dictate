@@ -13,8 +13,8 @@ language = ""
 # Vocabulary hint to bias transcription (e.g. "Python, Rust, TypeScript")
 prompt = ""
 
-# Global hotkey. Modifiers: CmdOrCtrl, Shift, Alt, Super
-hotkey = "CmdOrCtrl+Shift+Space"
+# Global hotkey. Modifiers: CmdOrCtrl, Ctrl, Shift, Alt, Super
+hotkey = "Ctrl+Space"
 
 # Microphone sample rate. 0 = use device native rate (recommended)
 samplerate = 0

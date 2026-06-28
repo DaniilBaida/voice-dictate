@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
 fn default_hotkey() -> String {
-    "CmdOrCtrl+Shift+Space".into()
+    "Ctrl+Space".into()
 }
 
 fn default_model() -> String {
