@@ -1,0 +1,62 @@
+[package]
+name = "voice-dictate"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Fast push-to-talk voice dictation (OpenAI gpt-4o-transcribe)"
+license = "MIT"
+repository = "https://github.com/DaniilBaida/voice-dictate"
+
+[[bin]]
+name = "voice-dictate"
+path = "src/main.rs"
+
+# ── Cross-platform ────────────────────────────────────────────────────────────
+[dependencies]
+cpal = "0.15"
+global-hotkey = "0.6"
+arboard = "3"
+async-openai = "0.28"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+hound = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# notify-rust uses WinRT on Windows and D-Bus on Linux automatically
+notify-rust = "4"
+
+# ── Windows-only ──────────────────────────────────────────────────────────────
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.19"
+windows = { version = "0.61", features = [
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+] }
+
+# ── Linux-only ────────────────────────────────────────────────────────────────
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.2"
+x11rb = { version = "0.13", optional = true, features = ["xtest", "allow-unsafe-code"] }
+ashpd = { version = "0.10", optional = true, features = ["tokio"] }
+
+[features]
+default = ["x11", "wayland"]
+x11 = ["dep:x11rb"]
+wayland = ["dep:ashpd"]
+
+# ── Build dependencies ─────────────────────────────────────────────────────────
+[build-dependencies]
+resvg = "0.44"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,23 @@
+# Voice Dictate configuration
+# Copy to ~/.config/voice-dictate/config.toml
+
+# OpenAI API key (or set OPENAI_API_KEY environment variable)
+# openai_api_key = "sk-..."
+
+# Transcription model
+model = "gpt-4o-transcribe"
+
+# Language code (ISO 639-1). Empty = auto-detect.
+language = ""
+
+# Vocabulary hint to bias transcription (e.g. "Python, Rust, TypeScript")
+prompt = ""
+
+# Global hotkey. Modifiers: CmdOrCtrl, Shift, Alt, Super
+hotkey = "CmdOrCtrl+Shift+Space"
+
+# Microphone sample rate. 0 = use device native rate (recommended)
+samplerate = 0
+
+# How many days to keep transcription history
+history_retention_days = 7
