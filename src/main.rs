@@ -5,12 +5,16 @@ mod config;
 mod hotkey;
 #[cfg(windows)]
 mod hotkey_capture;
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+mod hotkey_portal;
 mod notify;
 mod paste;
 mod sound;
+#[cfg(windows)]
 mod startup;
 mod state;
 mod transcribe;
+#[cfg(windows)]
 mod tray;
 
 use arboard::Clipboard;
@@ -63,11 +67,8 @@ fn main() -> anyhow::Result<()> {
             .build()?,
     );
 
-    let manager = GlobalHotKeyManager::new()?;
-    let current_hotkey = hotkey::parse(&cfg.hotkey)?;
-    manager.register(current_hotkey)?;
-
     let state_toggle = app_state.clone();
+    #[cfg(windows)]
     let state_tray = app_state.clone();
     let rec = Arc::clone(&recorder);
     let tx = Arc::clone(&transcriber);
@@ -119,17 +120,11 @@ fn main() -> anyhow::Result<()> {
                             state2.set(Phase::Idle);
                             return;
                         }
-                        match paste::paste().await {
-                            Ok(true) => {
-                                notify::send("Voice Dictate", &text[..text.len().min(120)]);
-                            }
-                            _ => {
-                                notify::send(
-                                    "Voice Dictate",
-                                    "Text copied to clipboard - press Ctrl+V to paste",
-                                );
-                            }
-                        }
+                        let _ = paste::paste().await; // auto-paste (logs on failure)
+                        #[cfg(target_os = "linux")]
+                        notify::send_result(text);
+                        #[cfg(not(target_os = "linux"))]
+                        notify::send("Voice Dictate", &text[..text.len().min(120)]);
                     }
                     Ok(_) => notify::send("Voice Dictate", "Nothing recognised."),
                     Err(e) => {
@@ -143,33 +138,108 @@ fn main() -> anyhow::Result<()> {
         // Phase::Transcribing: hotkey press is ignored
     });
 
-    let toggle_hk = Arc::clone(&toggle);
+    #[cfg(windows)]
     let toggle_tray = Arc::clone(&toggle);
 
-    // Only one hotkey is ever registered at a time, so any Pressed event is ours.
-    std::thread::spawn(move || {
-        let receiver = GlobalHotKeyEvent::receiver();
-        loop {
-            if let Ok(ev) = receiver.recv() {
-                if ev.state == HotKeyState::Pressed {
-                    toggle_hk();
+    #[cfg(windows)]
+    {
+        let manager = GlobalHotKeyManager::new()?;
+        let current_hotkey = hotkey::parse(&cfg.hotkey)?;
+        manager.register(current_hotkey)?;
+
+        let toggle_hk = Arc::clone(&toggle);
+        // Only one hotkey is ever registered at a time, so any Pressed event is ours.
+        std::thread::spawn(move || {
+            let receiver = GlobalHotKeyEvent::receiver();
+            loop {
+                if let Ok(ev) = receiver.recv() {
+                    if ev.state == HotKeyState::Pressed {
+                        toggle_hk();
+                    }
                 }
             }
-        }
-    });
+        });
 
-    notify::send("Voice Dictate", &format!("Ready. Hotkey: {}", cfg.hotkey));
-
-    #[cfg(windows)]
-    tray::run(state_tray, move || toggle_tray(), manager, current_hotkey);
+        tray::run(state_tray, move || toggle_tray(), manager, current_hotkey);
+    }
 
     #[cfg(target_os = "linux")]
     {
-        // Keep the manager alive for the lifetime of the process.
-        let _manager = manager;
-        let _ = current_hotkey;
-        tray::run(state_tray, move || toggle_tray(), || std::process::exit(0));
+        // On Wayland, X11 key grabs never fire while a native Wayland window has
+        // focus, so use the GlobalShortcuts portal instead. Fall back to the X11
+        // global-hotkey backend on X11 sessions.
+        let on_wayland = is_wayland_session();
+
+        #[cfg(feature = "wayland")]
+        let portal = if on_wayland {
+            // Non-sandboxed apps must register their app id with the host portal
+            // Registry, otherwise GlobalShortcuts rejects the session with
+            // "An app id is required". This must run on ashpd's shared
+            // connection before the shortcuts session is created.
+            if let Err(e) = rt.block_on(register_portal_app_id()) {
+                tracing::warn!("portal app-id registration failed: {e:#}");
+            }
+            let toggle_dyn: Arc<dyn Fn() + Send + Sync> = Arc::clone(&toggle) as _;
+            rt.spawn(hotkey_portal::run(cfg.hotkey.clone(), toggle_dyn));
+            true
+        } else {
+            false
+        };
+        #[cfg(not(feature = "wayland"))]
+        let portal = false;
+
+        // Keep the X11 manager alive for the process lifetime when we use it.
+        let _x11_manager = if portal {
+            None
+        } else {
+            let manager = GlobalHotKeyManager::new()?;
+            let current_hotkey = hotkey::parse(&cfg.hotkey)?;
+            manager.register(current_hotkey)?;
+
+            let toggle_hk = Arc::clone(&toggle);
+            std::thread::spawn(move || {
+                let receiver = GlobalHotKeyEvent::receiver();
+                loop {
+                    if let Ok(ev) = receiver.recv() {
+                        if ev.state == HotKeyState::Pressed {
+                            toggle_hk();
+                        }
+                    }
+                }
+            });
+            Some(manager)
+        };
+
+        // No tray icon on Linux (the GNOME mic indicator already shows recording).
+        // The app is driven entirely by the global hotkey; park the main thread
+        // so the process stays alive. Quit with: pkill -x voice-dictate
+        info!("ready (hotkey: {})", cfg.hotkey);
+        loop {
+            std::thread::park();
+        }
     }
 
+    #[cfg(windows)]
     Ok(())
+}
+
+/// App id that must match the installed `.desktop` file so the host portal
+/// Registry accepts our registration.
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+const PORTAL_APP_ID: &str = "com.daniil.VoiceDictate";
+
+#[cfg(all(target_os = "linux", feature = "wayland"))]
+async fn register_portal_app_id() -> anyhow::Result<()> {
+    let app_id = ashpd::AppID::try_from(PORTAL_APP_ID)
+        .map_err(|e| anyhow::anyhow!("invalid app id: {e}"))?;
+    ashpd::register_host_app(app_id).await?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_wayland_session() -> bool {
+    std::env::var("WAYLAND_DISPLAY").is_ok()
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
 }

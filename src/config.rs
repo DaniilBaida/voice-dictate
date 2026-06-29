@@ -64,6 +64,7 @@ pub fn config_file() -> PathBuf {
 
 /// Persist a new hotkey to the config file, replacing the existing `hotkey`
 /// line (preserving comments) or appending one if absent.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn save_hotkey(combo: &str) -> std::io::Result<()> {
     let path = config_file();
     if let Some(dir) = path.parent() {

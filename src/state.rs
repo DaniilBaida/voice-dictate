@@ -15,6 +15,7 @@ impl AppState {
         Self(Arc::new(Mutex::new(Phase::Idle)))
     }
 
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn get(&self) -> Phase {
         *self.0.lock().unwrap()
     }

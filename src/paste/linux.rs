@@ -54,6 +54,7 @@ fn paste_x11() -> anyhow::Result<bool> {
 
 #[cfg(feature = "x11")]
 fn keysym_to_keycode(conn: &x11rb::rust_connection::RustConnection, keysym: u32) -> anyhow::Result<u8> {
+    use x11rb::connection::Connection;
     use x11rb::protocol::xproto::ConnectionExt;
     let setup = conn.setup();
     let min_kc = setup.min_keycode;
@@ -72,35 +73,35 @@ fn keysym_to_keycode(conn: &x11rb::rust_connection::RustConnection, keysym: u32)
     anyhow::bail!("keysym 0x{keysym:x} not found in keyboard mapping")
 }
 
-#[cfg(feature = "wayland")]
+/// Default socket path created by the `ydotoold` system service (see install.sh).
+const DEFAULT_YDOTOOL_SOCKET: &str = "/run/ydotool.socket";
+
+/// Wayland auto-paste via ydotool (kernel-level uinput injection).
+///
+/// This works on any compositor, including GNOME, where the virtual-keyboard
+/// Wayland protocol and X11 key injection cannot reach focused windows. It is
+/// invisible to the user: no portal dialog and no "your screen is being
+/// controlled" indicator. Requires the `ydotoold` daemon running with a socket
+/// the user can reach. evdev keycodes: Left Ctrl = 29, V = 47.
 async fn paste_wayland() -> anyhow::Result<bool> {
-    use ashpd::desktop::remote_desktop::{DeviceType, KeyState, RemoteDesktop};
+    // Let the clipboard owner settle before pasting.
+    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
 
-    let proxy = RemoteDesktop::new().await?;
-    let session = proxy.create_session().await?;
-    proxy.select_devices(&session, DeviceType::Keyboard).await?;
-    proxy.start(&session, None).await?;
+    let mut cmd = std::process::Command::new("ydotool");
+    if std::env::var_os("YDOTOOL_SOCKET").is_none() {
+        cmd.env("YDOTOOL_SOCKET", DEFAULT_YDOTOOL_SOCKET);
+    }
+    cmd.args(["key", "29:1", "47:1", "47:0", "29:0"]);
 
-    // XKB keycode for Left Ctrl = 29 (evdev), V = 47
-    // We send key down then up for Ctrl+V
-    proxy
-        .notify_keyboard_keycode(&session, 29, KeyState::Pressed)
-        .await?;
-    proxy
-        .notify_keyboard_keycode(&session, 47, KeyState::Pressed)
-        .await?;
-    proxy
-        .notify_keyboard_keycode(&session, 47, KeyState::Released)
-        .await?;
-    proxy
-        .notify_keyboard_keycode(&session, 29, KeyState::Released)
-        .await?;
-
-    Ok(true)
-}
-
-#[cfg(not(feature = "wayland"))]
-async fn paste_wayland() -> anyhow::Result<bool> {
-    tracing::warn!("built without wayland feature; paste not available on Wayland");
-    Ok(false)
+    match cmd.status() {
+        Ok(s) if s.success() => Ok(true),
+        Ok(s) => {
+            tracing::warn!("ydotool exited with {s}; is the ydotoold service running?");
+            Ok(false)
+        }
+        Err(e) => {
+            tracing::warn!("could not run ydotool ({e}); falling back to manual paste");
+            Ok(false)
+        }
+    }
 }
