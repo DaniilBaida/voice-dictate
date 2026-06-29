@@ -1,5 +1,6 @@
 # Installs Voice Dictate on Windows:
-#   - builds the release binary (if cargo is available and no binary exists)
+#   - uses a locally built binary if present, otherwise downloads the prebuilt
+#     binary from the latest GitHub release (no Rust toolchain required)
 #   - copies it to %LOCALAPPDATA%\Programs\voice-dictate
 #   - creates a Start Menu shortcut so it shows up as an app
 #   - launches it
@@ -8,6 +9,8 @@
 
 $ErrorActionPreference = "Stop"
 
+$repo      = "DaniilBaida/voice-dictate"
+$asset     = "voice-dictate-windows-x86_64.exe"
 $root      = $PSScriptRoot
 $binary    = Join-Path $root "target\release\voice-dictate.exe"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\voice-dictate"
@@ -15,15 +18,15 @@ $exe       = Join-Path $installDir "voice-dictate.exe"
 $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $lnk       = Join-Path $startMenu "Voice Dictate.lnk"
 
-# Build if needed
-if (-not (Test-Path $binary)) {
-    Write-Host "No release binary found, building..."
-    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        throw "cargo not found on PATH and no prebuilt binary at $binary"
-    }
-    Push-Location $root
-    cargo build --release
-    Pop-Location
+# Prefer a locally built binary; otherwise download the prebuilt release asset.
+if (Test-Path $binary) {
+    $source = $binary
+    Write-Host "Using locally built binary: $binary"
+} else {
+    $url      = "https://github.com/$repo/releases/latest/download/$asset"
+    $source   = Join-Path $env:TEMP $asset
+    Write-Host "Downloading prebuilt binary from latest release..."
+    Invoke-WebRequest -Uri $url -OutFile $source -UseBasicParsing
 }
 
 # Stop any running instance so the file is not locked
@@ -32,7 +35,7 @@ Start-Sleep -Milliseconds 500
 
 # Install binary
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-Copy-Item $binary $exe -Force
+Copy-Item $source $exe -Force
 Write-Host "Installed binary: $exe"
 
 # Start Menu shortcut

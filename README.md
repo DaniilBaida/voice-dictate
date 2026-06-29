@@ -41,13 +41,22 @@ Copy `config.example.toml` there and edit. The OpenAI key is read from, in order
 2. `openai_api_key` in the config file
 3. `~/.config/openai.key`
 
+## Install
+
+Prebuilt binaries for Windows and Linux are published on the
+[Releases page](https://github.com/DaniilBaida/voice-dictate/releases/latest).
+No Rust toolchain or compiler is needed to install.
+
 ## Install (Windows)
 
 ```powershell
+git clone https://github.com/DaniilBaida/voice-dictate.git
+cd voice-dictate
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-This builds the release binary (if needed), copies it to
+`install.ps1` downloads the prebuilt binary from the latest release (or uses a
+locally built one if present), copies it to
 `%LOCALAPPDATA%\Programs\voice-dictate`, creates a Start Menu shortcut so it
 shows up as an app, and launches it. To remove everything:
 
@@ -55,22 +64,37 @@ shows up as an app, and launches it. To remove everything:
 powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```
 
-## Install (Linux)
+Set your OpenAI key as a persistent user environment variable (read on every
+launch):
 
-First install the build/runtime dependencies:
-
-```sh
-sudo apt install build-essential pkg-config libasound2-dev libdbus-1-dev \
-    libxcb1-dev libxcb-render0-dev libxcb-randr0-dev libssl-dev pulseaudio-utils
+```powershell
+setx OPENAI_API_KEY "sk-..."
 ```
 
-Then run the installer (no root needed):
+Or just download `voice-dictate-windows-x86_64.exe` from the Releases page and
+run it directly, after setting `OPENAI_API_KEY`.
+
+## Install (Linux)
+
+Tested on Ubuntu (GNOME, Wayland and X11). The prebuilt binary links against
+libraries that ship on a standard desktop (ALSA, D-Bus, XCB). Install the
+runtime bits it needs that may be missing:
 
 ```sh
+sudo apt install pulseaudio-utils ydotool
+```
+
+Then clone and run the installer (the binary itself needs no root; sudo is asked
+only to set up the `ydotoold` input daemon):
+
+```sh
+git clone https://github.com/DaniilBaida/voice-dictate.git
+cd voice-dictate
 ./install.sh
 ```
 
-This builds the release binary, copies it to `~/.local/bin`, installs a desktop
+`install.sh` downloads the prebuilt binary from the latest release (or uses a
+locally built one if present), copies it to `~/.local/bin`, installs a desktop
 entry, sets up the `ydotoold` input daemon (system service, needs sudo), and
 launches it. The desktop entry is required: on Wayland the GlobalShortcuts
 portal identifies the app by an application id, and the host portal only accepts
@@ -87,7 +111,8 @@ To remove everything:
 
 ## Build from source
 
-Requires a Rust toolchain and a C linker.
+Only needed if you want to compile yourself instead of using the prebuilt
+binaries above. Requires a Rust toolchain and a C linker.
 
 ```sh
 cargo build --release

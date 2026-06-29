@@ -12,17 +12,24 @@ set -euo pipefail
 
 APP_ID="com.daniil.VoiceDictate"
 BIN_NAME="voice-dictate"
+REPO="DaniilBaida/voice-dictate"
+ASSET="voice-dictate-linux-x86_64"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 APPS_DIR="$HOME/.local/share/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/voice-dictate"
 
-echo "==> Building release binary"
-( cd "$REPO_DIR" && cargo build --release )
-
-echo "==> Installing binary to $BIN_DIR"
+# Prefer a locally built binary; otherwise download the prebuilt release asset
+# (no Rust toolchain required).
 mkdir -p "$BIN_DIR"
-install -m 0755 "$REPO_DIR/target/release/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
+if [ -x "$REPO_DIR/target/release/$BIN_NAME" ]; then
+    echo "==> Installing locally built binary to $BIN_DIR"
+    install -m 0755 "$REPO_DIR/target/release/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
+else
+    echo "==> Downloading prebuilt binary from latest release"
+    curl -fsSL "https://github.com/$REPO/releases/latest/download/$ASSET" -o "$BIN_DIR/$BIN_NAME"
+    chmod 0755 "$BIN_DIR/$BIN_NAME"
+fi
 
 echo "==> Installing desktop entry ($APP_ID.desktop)"
 mkdir -p "$APPS_DIR"
