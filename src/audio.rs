@@ -163,6 +163,14 @@ impl Recorder {
             })
             .collect();
 
+        // Warn if the input is clipping: railed samples mean the mic gain is too
+        // high, which produces saturated audio and garbage transcriptions.
+        let clipped = mono.iter().filter(|&&s| (s as i32).abs() >= 32000).count();
+        let pct = 100.0 * clipped as f32 / mono.len() as f32;
+        if pct > 2.0 {
+            tracing::warn!("input audio is clipping ({pct:.0}% of samples railed); lower your microphone input gain");
+        }
+
         encode_wav(&mono, inner.sample_rate)
     }
 }
