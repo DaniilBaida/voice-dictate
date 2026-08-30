@@ -14,11 +14,13 @@ $lnk        = Join-Path $startMenu "Voice Dictate.lnk"
 $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
 
 Get-Process voice-dictate -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process nemo-speech -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 500
 
 Remove-Item $lnk -Force
 Remove-Item (Join-Path $startupDir "voice-dictate.cmd") -Force
 Remove-Item (Join-Path $startupDir "voice-dictate.vbs") -Force
+Remove-Item (Join-Path $startupDir "voice-dictate-asr.vbs") -Force
 Remove-Item $installDir -Recurse -Force
 
 Write-Host "Voice Dictate uninstalled."

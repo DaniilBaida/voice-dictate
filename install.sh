@@ -18,6 +18,9 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 APPS_DIR="$HOME/.local/share/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/voice-dictate"
+NEMO_BIN="$HOME/.local/bin/nemo-speech"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+ASR_SERVICE="voice-dictate-asr.service"
 
 # Prefer a locally built binary; otherwise download the prebuilt release asset
 # (no Rust toolchain required).
@@ -50,10 +53,33 @@ echo "==> Ensuring config exists at $CONFIG_DIR/config.toml"
 mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
     cp "$REPO_DIR/config.example.toml" "$CONFIG_DIR/config.toml"
-    echo "    created from config.example.toml - add your OpenAI key"
+    echo "    created from config.example.toml"
 else
     echo "    already present, left untouched"
 fi
+
+echo "==> Installing local NVIDIA Parakeet TDT transcription"
+if [ ! -x "$NEMO_BIN" ]; then
+    curl -fsSL https://github.com/NVIDIA/NeMo-Speech.cpp/raw/main/scripts/install.sh | sh
+fi
+mkdir -p "$SYSTEMD_USER_DIR"
+cat > "$SYSTEMD_USER_DIR/$ASR_SERVICE" <<EOF
+[Unit]
+Description=Local speech recognition for Voice Dictate
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$NEMO_BIN serve --asr-model parakeet-tdt --host 127.0.0.1 --port 8080 --no-ui
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload
+systemctl --user enable "$ASR_SERVICE"
+systemctl --user restart "$ASR_SERVICE"
 
 # Auto-paste on Wayland uses ydotool, which injects keystrokes at the kernel
 # level via /dev/uinput. This needs the ydotoold daemon running with a socket
@@ -61,9 +87,7 @@ fi
 # (no input-group relogin) and survives reboots. Needs sudo.
 if command -v systemctl >/dev/null 2>&1; then
     echo "==> Setting up ydotool input daemon (needs sudo)"
-    if ! command -v ydotoold >/dev/null 2>&1; then
-        sudo apt-get install -y ydotool
-    fi
+    sudo apt-get install -y ydotool libayatana-appindicator3-1
     # The Debian package ships a user service that requires input-group relogin;
     # disable it in favor of our root system service.
     systemctl --user disable --now ydotool.service 2>/dev/null || true
@@ -85,7 +109,7 @@ EOF
     sudo systemctl enable --now ydotoold.service
 fi
 
-# Start automatically at login (there is no tray menu to toggle this).
+# Voice Dictate starts automatically at login.
 echo "==> Enabling autostart"
 AUTOSTART_DIR="$HOME/.config/autostart"
 mkdir -p "$AUTOSTART_DIR"
@@ -107,18 +131,16 @@ setsid "$BIN_DIR/$BIN_NAME" >/dev/null 2>&1 < /dev/null &
 
 cat <<EOF
 
-Installed and started; it also starts automatically at login. There is no tray
-icon: recording is shown by GNOME's own microphone indicator (top bar), and the
-app is driven entirely by the global hotkey.
+Voice Dictate is installed and running. It also starts automatically at login. The tray
+microphone stays visible and its menu controls dictation, shortcut selection,
+and quitting.
+
+Transcription runs locally with NVIDIA Parakeet TDT through NeMo-Speech.cpp.
+No cloud transcription account or API key is used.
 
 First run on Wayland prompts once to set the global shortcut (default proposes
-Ctrl+Space). Auto-paste via ydotool needs no prompt and no on-screen indicator.
+Ctrl+Space). Auto-paste via ydotool needs no prompt.
 
 To quit:    pkill -x voice-dictate
 To disable autostart:  rm ~/.config/autostart/voice-dictate.desktop
-
-Set your OpenAI key (one of):
-  - export OPENAI_API_KEY=sk-...      (then relaunch)
-  - openai_api_key = "sk-..."         in $CONFIG_DIR/config.toml
-  - $HOME/.config/openai.key          (key on a single line)
 EOF

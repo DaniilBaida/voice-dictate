@@ -17,6 +17,29 @@ $installDir = Join-Path $env:LOCALAPPDATA "Programs\voice-dictate"
 $exe       = Join-Path $installDir "voice-dictate.exe"
 $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $lnk       = Join-Path $startMenu "Voice Dictate.lnk"
+$startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
+$asrStartup = Join-Path $startupDir "voice-dictate-asr.vbs"
+
+# Local NVIDIA Parakeet TDT runtime
+$nemoCommand = Get-Command nemo-speech -ErrorAction SilentlyContinue
+if ($nemoCommand) {
+    $nemoExe = $nemoCommand.Source
+} else {
+    Write-Host "Installing NeMo-Speech.cpp for local transcription..."
+    $nemoInstaller = Invoke-RestMethod -Uri "https://github.com/NVIDIA/NeMo-Speech.cpp/raw/main/scripts/install.ps1"
+    Invoke-Expression $nemoInstaller
+    $nemoExe = Join-Path $env:USERPROFILE ".local\bin\nemo-speech.exe"
+}
+if (-not (Test-Path $nemoExe)) {
+    throw "nemo-speech.exe is not available at $nemoExe"
+}
+
+New-Item -ItemType Directory -Force -Path $startupDir | Out-Null
+$asrCommand = '"' + $nemoExe + '" serve --asr-model parakeet-tdt --host 127.0.0.1 --port 8080 --no-ui'
+$asrVbs = 'CreateObject("WScript.Shell").Run "' + $asrCommand.Replace('"', '""') + '", 0, False'
+Set-Content -Path $asrStartup -Value $asrVbs -Encoding ASCII
+Get-Process nemo-speech -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Process -FilePath $nemoExe -ArgumentList "serve", "--asr-model", "parakeet-tdt", "--host", "127.0.0.1", "--port", "8080", "--no-ui" -WindowStyle Hidden
 
 # Prefer a locally built binary; otherwise download the prebuilt release asset.
 if (Test-Path $binary) {
@@ -50,3 +73,4 @@ Write-Host "Created Start Menu shortcut: $lnk"
 # Launch
 Start-Process $exe
 Write-Host "Voice Dictate is running. Look for the microphone icon in the system tray."
+Write-Host "Transcription runs locally with NVIDIA Parakeet TDT. No API key is used."

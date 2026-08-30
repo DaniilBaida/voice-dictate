@@ -5,12 +5,16 @@ fn default_hotkey() -> String {
     "Ctrl+Space".into()
 }
 
-fn default_model() -> String {
-    "gpt-4o-transcribe".into()
+fn default_paste_shortcut() -> String {
+    "Ctrl+V".into()
 }
 
-fn default_api_base() -> String {
-    "https://api.openai.com/v1".into()
+fn default_model() -> String {
+    "default".into()
+}
+
+fn default_server_url() -> String {
+    "http://127.0.0.1:8080/v1".into()
 }
 
 fn default_history_days() -> u32 {
@@ -19,8 +23,8 @@ fn default_history_days() -> u32 {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    #[serde(default = "default_api_base")]
-    pub api_base: String,
+    #[serde(default = "default_server_url")]
+    pub server_url: String,
 
     #[serde(default = "default_model")]
     pub model: String,
@@ -34,28 +38,28 @@ pub struct Config {
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
 
+    #[serde(default = "default_paste_shortcut")]
+    pub paste_shortcut: String,
+
     /// 0 = use device native rate
     #[serde(default)]
     pub samplerate: u32,
 
     #[serde(default = "default_history_days")]
     pub history_retention_days: u32,
-
-    #[serde(default)]
-    pub openai_api_key: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            api_base: default_api_base(),
+            server_url: default_server_url(),
             model: default_model(),
             language: String::new(),
             prompt: String::new(),
             hotkey: default_hotkey(),
+            paste_shortcut: default_paste_shortcut(),
             samplerate: 0,
             history_retention_days: default_history_days(),
-            openai_api_key: String::new(),
         }
     }
 }
@@ -74,6 +78,15 @@ pub fn config_file() -> PathBuf {
 /// line (preserving comments) or appending one if absent.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn save_hotkey(combo: &str) -> std::io::Result<()> {
+    save_shortcut("hotkey", combo)
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+pub fn save_paste_shortcut(combo: &str) -> std::io::Result<()> {
+    save_shortcut("paste_shortcut", combo)
+}
+
+fn save_shortcut(name: &str, combo: &str) -> std::io::Result<()> {
     let path = config_file();
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
@@ -82,10 +95,13 @@ pub fn save_hotkey(combo: &str) -> std::io::Result<()> {
     let mut out = String::new();
     let mut replaced = false;
     for line in existing.lines() {
-        if line.trim_start().starts_with("hotkey")
-            && line.split_once('=').map(|(k, _)| k.trim() == "hotkey").unwrap_or(false)
+        if line.trim_start().starts_with(name)
+            && line
+                .split_once('=')
+                .map(|(k, _)| k.trim() == name)
+                .unwrap_or(false)
         {
-            out.push_str(&format!("hotkey = \"{combo}\""));
+            out.push_str(&format!("{name} = \"{combo}\""));
             replaced = true;
         } else {
             out.push_str(line);
@@ -93,7 +109,7 @@ pub fn save_hotkey(combo: &str) -> std::io::Result<()> {
         out.push('\n');
     }
     if !replaced {
-        out.push_str(&format!("hotkey = \"{combo}\"\n"));
+        out.push_str(&format!("{name} = \"{combo}\"\n"));
     }
     fs::write(path, out)
 }
@@ -119,28 +135,14 @@ pub fn load() -> Config {
     }
 }
 
-pub fn resolve_api_key(cfg: &Config) -> Option<String> {
-    // Env var takes priority
-    if let Ok(k) = std::env::var("OPENAI_API_KEY") {
-        let k = k.trim().to_string();
-        if !k.is_empty() {
-            return Some(k);
-        }
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn defaults_to_local_parakeet_service() {
+        let config = Config::default();
+        assert_eq!(config.server_url, "http://127.0.0.1:8080/v1");
+        assert_eq!(config.model, "default");
     }
-    // Then config file field
-    if !cfg.openai_api_key.is_empty() {
-        return Some(cfg.openai_api_key.clone());
-    }
-    // Legacy ~/.config/openai.key (whisper-dictate convention; home-relative so it works on both platforms)
-    let legacy = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".config")
-        .join("openai.key");
-    if let Ok(k) = fs::read_to_string(legacy) {
-        let k = k.trim().to_string();
-        if !k.is_empty() {
-            return Some(k);
-        }
-    }
-    None
 }

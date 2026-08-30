@@ -1,18 +1,20 @@
 # Voice Dictate
 
 Fast, low-overhead push-to-talk voice dictation. Press a global hotkey, speak,
-press again: your speech is transcribed via the OpenAI audio API, copied to the
-clipboard, and pasted into the focused window.
+press again: NVIDIA Parakeet TDT transcribes the speech locally through
+[NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp), then the text is
+copied and pasted into the focused window.
 
-Written in Rust for a single self-contained binary with no runtime, no virtualenv,
-and a small memory footprint (~22 MB resident on Windows).
+The dictation client is a native Rust binary. The local speech service runs as
+a separate native process with no cloud transcription account.
 
 ## Status
 
 - **Windows**: working (WASAPI capture, Win32 global hotkey, native tray, SendInput paste).
-- **Linux**: working on Wayland (tested on GNOME 50) and X11. Wayland uses the
+- **Linux**: working on Wayland (GNOME 50) and X11. Wayland uses the
   GlobalShortcuts portal for the hotkey and `ydotool` (kernel uinput) for
-  auto-paste; X11 falls back to the `global-hotkey` backend and XTest.
+  auto-paste; X11 falls back to the `global-hotkey` backend and XTest. A tray
+  microphone shows the current state and provides the app menu.
 
 ## How it works
 
@@ -21,9 +23,9 @@ and a small memory footprint (~22 MB resident on Windows).
 | Audio capture  | WASAPI (`cpal`)          | PipeWire / ALSA (`cpal`)                |
 | Global hotkey  | Win32 `RegisterHotKey`   | GlobalShortcuts portal (Wayland) / `global-hotkey` (X11) |
 | Paste          | `SendInput`              | `ydotool` uinput (Wayland) / XTest (X11) |
-| Tray icon      | `tray-icon` (Win32)      | none (GNOME shows its own mic indicator while recording) |
+| Tray icon      | `tray-icon` (Win32)      | `tray-icon` (GTK/AppIndicator)             |
 | Notifications  | WinRT toast              | D-Bus (`notify-rust`), errors only      |
-| Transcription  | OpenAI `gpt-4o-transcribe` (`async-openai`)                       |
+| Transcription  | NVIDIA Parakeet TDT through local NeMo-Speech.cpp                 |
 
 The icon (`assets/icon.svg`) is rasterised to PNG at build time by `build.rs`
 (via `resvg`) and embedded; it never enters the runtime as an SVG.
@@ -35,21 +37,15 @@ Config lives at:
 - Windows: `%APPDATA%\voice-dictate\config.toml`
 - Linux: `~/.config/voice-dictate/config.toml`
 
-Copy `config.example.toml` there and edit. The OpenAI key is read from, in order:
-
-1. `OPENAI_API_KEY` environment variable
-2. `openai_api_key` in the config file
-3. `~/.config/openai.key`
-
-`api_base` selects an OpenAI-compatible transcription endpoint. A local
-NeMo-Speech.cpp server uses `http://127.0.0.1:8080/v1` with any nonempty
-placeholder key and `model = "default"`.
+Copy `config.example.toml` there and edit. `server_url` points to the local
+NeMo-Speech.cpp service at `http://127.0.0.1:8080/v1`. The service loads
+Parakeet TDT and exposes it as `model = "default"`. No API key is required.
 
 ## Install
 
-Prebuilt binaries for Windows and Linux are published on the
+Prebuilt client binaries for Windows and Linux are published on the
 [Releases page](https://github.com/DaniilBaida/voice-dictate/releases/latest).
-No Rust toolchain or compiler is needed to install.
+The platform installer also installs the local NeMo-Speech.cpp runtime.
 
 ## Install (Windows)
 
@@ -62,21 +58,15 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 `install.ps1` downloads the prebuilt binary from the latest release (or uses a
 locally built one if present), copies it to
 `%LOCALAPPDATA%\Programs\voice-dictate`, creates a Start Menu shortcut so it
-shows up as an app, and launches it. To remove everything:
+shows up as an app, installs NeMo-Speech.cpp, starts Parakeet TDT locally, and
+launches Voice Dictate. To remove Voice Dictate:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ```
 
-Set your OpenAI key as a persistent user environment variable (read on every
-launch):
-
-```powershell
-setx OPENAI_API_KEY "sk-..."
-```
-
-Or just download `voice-dictate-windows-x86_64.exe` from the Releases page and
-run it directly, after setting `OPENAI_API_KEY`.
+The Parakeet model is stored in the local NeMo-Speech.cpp model cache. No cloud
+transcription account or API key is required.
 
 ## Install (Linux)
 
@@ -85,7 +75,7 @@ libraries that ship on a standard desktop (ALSA, D-Bus, XCB). Install the
 runtime bits it needs that may be missing:
 
 ```sh
-sudo apt install pulseaudio-utils ydotool
+sudo apt install pulseaudio-utils ydotool libayatana-appindicator3-1
 ```
 
 Then clone and run the installer (the binary itself needs no root; sudo is asked
@@ -99,14 +89,15 @@ cd voice-dictate
 
 `install.sh` downloads the prebuilt binary from the latest release (or uses a
 locally built one if present), copies it to `~/.local/bin`, installs a desktop
-entry, sets up the `ydotoold` input daemon (system service, needs sudo), and
-launches it. The desktop entry is required: on Wayland the GlobalShortcuts
+entry, installs NeMo-Speech.cpp, runs Parakeet TDT as a user service, sets up
+the `ydotoold` input daemon, and launches Voice Dictate. The desktop entry is
+required: on Wayland the GlobalShortcuts
 portal identifies the app by an application id, and the host portal only accepts
 an id that matches an installed `.desktop` file.
 
 On the first run under Wayland, GNOME prompts once to set the global shortcut.
 Auto-paste uses `ydotool`, which injects the keystroke at the kernel level via
-`/dev/uinput`, so it needs no permission dialog and shows no on-screen indicator.
+`/dev/uinput`, so it needs no permission dialog.
 To remove everything:
 
 ```sh
@@ -128,7 +119,8 @@ The binary is `target/release/voice-dictate`.
 
 ```sh
 sudo apt install build-essential pkg-config libasound2-dev libdbus-1-dev \
-    libxcb1-dev libxcb-render0-dev libxcb-randr0-dev libssl-dev pulseaudio-utils
+    libxcb1-dev libxcb-render0-dev libxcb-randr0-dev libssl-dev libgtk-3-dev \
+    libayatana-appindicator3-dev pulseaudio-utils
 ```
 
 ## Usage
@@ -136,12 +128,11 @@ sudo apt install build-essential pkg-config libasound2-dev libdbus-1-dev \
 Default hotkey is **Ctrl+Space**: press to start recording, press again to stop
 and transcribe. A short beep marks start and stop.
 
-On Windows a tray icon appears, with a menu offering "Start at login" and "Quit".
-
-On Linux there is no tray icon: while recording, GNOME shows its own microphone
-indicator in the top bar, and the app is otherwise driven entirely by the
-hotkey. `install.sh` enables autostart at login. To quit, run
-`pkill -x voice-dictate`.
+The tray microphone stays visible. Its menu starts or stops dictation, displays
+the current shortcut, opens the shortcut selector, selects `Ctrl+V` or
+`Ctrl+Shift+V` for automatic paste, and quits the app. The microphone is red
+while recording and white at other times.
+`install.sh` enables autostart at login on Linux.
 
 ## License
 

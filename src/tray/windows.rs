@@ -28,7 +28,7 @@ pub fn run_tray(
         &quit_item,
     ]);
 
-    let (rgba, w, h) = icon_rgba(false);
+    let (rgba, w, h) = icon_rgba(crate::state::Phase::Idle);
     let icon = Icon::from_rgba(rgba, w, h).expect("icon creation failed");
 
     let tray = TrayIconBuilder::new()
@@ -82,8 +82,7 @@ pub fn run_tray(
         }
 
         // Update icon colour to reflect recording state
-        let recording = state.get() == crate::state::Phase::Recording;
-        let (rgba, w, h) = icon_rgba(recording);
+        let (rgba, w, h) = icon_rgba(state.get());
         if let Ok(icon) = Icon::from_rgba(rgba, w, h) {
             let _ = tray.set_icon(Some(icon));
         }

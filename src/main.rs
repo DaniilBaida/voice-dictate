@@ -14,13 +14,13 @@ mod sound;
 mod startup;
 mod state;
 mod transcribe;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod tray;
 
 use arboard::Clipboard;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use state::{AppState, Phase};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::info;
 
 fn main() -> anyhow::Result<()> {
@@ -32,30 +32,17 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let cfg = config::load();
-    let api_key = match config::resolve_api_key(&cfg) {
-        Some(k) => k,
-        None => {
-            eprintln!(
-                "No OpenAI API key found.\n\
-                 Set OPENAI_API_KEY env var or add openai_api_key = \"sk-...\" to\n\
-                 {:?}",
-                config::config_file()
-            );
-            std::process::exit(1);
-        }
-    };
-
     info!("starting voice-dictate");
     notify::init_icon();
 
     let app_state = AppState::new();
+    let paste_shortcut = Arc::new(Mutex::new(cfg.paste_shortcut.clone()));
 
     // RecorderHandle is Send - cpal Stream stays on the audio thread
     let recorder = Arc::new(audio::spawn_audio_thread(cfg.samplerate)?);
 
     let transcriber = Arc::new(transcribe::Transcriber::new(
-        &api_key,
-        &cfg.api_base,
+        &cfg.server_url,
         &cfg.model,
         &cfg.language,
         &cfg.prompt,
@@ -74,6 +61,7 @@ fn main() -> anyhow::Result<()> {
     let rec = Arc::clone(&recorder);
     let tx = Arc::clone(&transcriber);
     let rt2 = Arc::clone(&rt);
+    let paste_shortcut_toggle = Arc::clone(&paste_shortcut);
 
     let toggle = Arc::new(move || {
         let state = &state_toggle;
@@ -83,7 +71,6 @@ fn main() -> anyhow::Result<()> {
                 Ok(_) => {
                     info!("recording started");
                     sound::recording_start();
-                    notify::send("Voice Dictate", "Recording...");
                 }
                 Err(e) => {
                     tracing::error!("recorder start: {e}");
@@ -108,26 +95,23 @@ fn main() -> anyhow::Result<()> {
             }
 
             info!("transcribing {} bytes", wav.len());
-            notify::send("Voice Dictate", "Transcribing...");
 
             let state2 = state.clone();
             let transcriber = Arc::clone(&tx);
+            let paste_shortcut = paste_shortcut_toggle.lock().unwrap().clone();
             rt2.spawn(async move {
                 match transcriber.transcribe(wav).await {
                     Ok(text) if !text.is_empty() => {
                         info!("transcription: {text}");
-                        if let Err(e) = Clipboard::new().and_then(|mut c| c.set_text(text.clone())) {
+                        if let Err(e) = Clipboard::new().and_then(|mut c| c.set_text(text.clone()))
+                        {
                             tracing::error!("clipboard: {e}");
                             state2.set(Phase::Idle);
                             return;
                         }
-                        let _ = paste::paste().await; // auto-paste (logs on failure)
-                        #[cfg(target_os = "linux")]
-                        notify::send_result(text);
-                        #[cfg(not(target_os = "linux"))]
-                        notify::send("Voice Dictate", &text[..text.len().min(120)]);
+                        let _ = paste::paste(&paste_shortcut).await;
                     }
-                    Ok(_) => notify::send("Voice Dictate", "Nothing recognised."),
+                    Ok(_) => info!("nothing recognised"),
                     Err(e) => {
                         tracing::error!("transcription: {e}");
                         notify::send("Voice Dictate", &format!("Error: {e}"));
@@ -170,6 +154,7 @@ fn main() -> anyhow::Result<()> {
         // focus, so use the GlobalShortcuts portal instead. Fall back to the X11
         // global-hotkey backend on X11 sessions.
         let on_wayland = is_wayland_session();
+        let current_shortcut = Arc::new(Mutex::new(cfg.hotkey.clone()));
 
         #[cfg(feature = "wayland")]
         let portal = if on_wayland {
@@ -181,7 +166,11 @@ fn main() -> anyhow::Result<()> {
                 tracing::warn!("portal app-id registration failed: {e:#}");
             }
             let toggle_dyn: Arc<dyn Fn() + Send + Sync> = Arc::clone(&toggle) as _;
-            rt.spawn(hotkey_portal::run(cfg.hotkey.clone(), toggle_dyn));
+            rt.spawn(hotkey_portal::run(
+                cfg.hotkey.clone(),
+                toggle_dyn,
+                Arc::clone(&current_shortcut),
+            ));
             true
         } else {
             false
@@ -211,16 +200,11 @@ fn main() -> anyhow::Result<()> {
             Some(manager)
         };
 
-        // No tray icon on Linux (the GNOME mic indicator already shows recording).
-        // The app is driven entirely by the global hotkey; park the main thread
-        // so the process stays alive. Quit with: pkill -x voice-dictate
         info!("ready (hotkey: {})", cfg.hotkey);
-        loop {
-            std::thread::park();
-        }
+        let toggle_tray: Arc<dyn Fn() + Send + Sync> = Arc::clone(&toggle) as _;
+        tray::run_linux(app_state, toggle_tray, current_shortcut, paste_shortcut)?;
     }
 
-    #[cfg(windows)]
     Ok(())
 }
 

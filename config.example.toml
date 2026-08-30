@@ -1,14 +1,11 @@
 # Voice Dictate configuration
 # Copy to ~/.config/voice-dictate/config.toml
 
-# OpenAI API key (or set OPENAI_API_KEY environment variable)
-# openai_api_key = "sk-..."
+# Local NeMo-Speech.cpp server
+server_url = "http://127.0.0.1:8080/v1"
 
-# OpenAI-compatible transcription endpoint
-api_base = "https://api.openai.com/v1"
-
-# Transcription model
-model = "gpt-4o-transcribe"
+# The server runs NVIDIA Parakeet TDT and exposes it as the default model
+model = "default"
 
 # Language code (ISO 639-1). Empty = auto-detect.
 language = ""
@@ -18,6 +15,9 @@ prompt = ""
 
 # Global hotkey. Modifiers: CmdOrCtrl, Ctrl, Shift, Alt, Super
 hotkey = "Ctrl+Space"
+
+# Paste shortcut. Supported values: Ctrl+V, Ctrl+Shift+V
+paste_shortcut = "Ctrl+V"
 
 # Microphone sample rate. 0 = use device native rate (recommended)
 samplerate = 0
