@@ -9,12 +9,19 @@ fn default_model() -> String {
     "gpt-4o-transcribe".into()
 }
 
+fn default_api_base() -> String {
+    "https://api.openai.com/v1".into()
+}
+
 fn default_history_days() -> u32 {
     7
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(default = "default_api_base")]
+    pub api_base: String,
+
     #[serde(default = "default_model")]
     pub model: String,
 
@@ -41,6 +48,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            api_base: default_api_base(),
             model: default_model(),
             language: String::new(),
             prompt: String::new(),

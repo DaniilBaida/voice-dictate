@@ -12,8 +12,10 @@ pub struct Transcriber {
 }
 
 impl Transcriber {
-    pub fn new(api_key: &str, model: &str, language: &str, prompt: &str) -> Self {
-        let cfg = OpenAIConfig::new().with_api_key(api_key);
+    pub fn new(api_key: &str, api_base: &str, model: &str, language: &str, prompt: &str) -> Self {
+        let cfg = OpenAIConfig::new()
+            .with_api_key(api_key)
+            .with_api_base(api_base);
         Self {
             client: Client::with_config(cfg),
             model: model.to_string(),

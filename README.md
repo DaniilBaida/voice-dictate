@@ -41,6 +41,10 @@ Copy `config.example.toml` there and edit. The OpenAI key is read from, in order
 2. `openai_api_key` in the config file
 3. `~/.config/openai.key`
 
+`api_base` selects an OpenAI-compatible transcription endpoint. A local
+NeMo-Speech.cpp server uses `http://127.0.0.1:8080/v1` with any nonempty
+placeholder key and `model = "default"`.
+
 ## Install
 
 Prebuilt binaries for Windows and Linux are published on the

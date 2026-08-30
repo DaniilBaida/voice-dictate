@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
 
     let transcriber = Arc::new(transcribe::Transcriber::new(
         &api_key,
+        &cfg.api_base,
         &cfg.model,
         &cfg.language,
         &cfg.prompt,

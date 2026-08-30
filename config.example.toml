@@ -4,6 +4,9 @@
 # OpenAI API key (or set OPENAI_API_KEY environment variable)
 # openai_api_key = "sk-..."
 
+# OpenAI-compatible transcription endpoint
+api_base = "https://api.openai.com/v1"
+
 # Transcription model
 model = "gpt-4o-transcribe"
 
