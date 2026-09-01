@@ -35,10 +35,13 @@ pub fn icon_rgba(phase: crate::state::Phase) -> (Vec<u8>, u32, u32) {
         .expect("embedded icon PNG is invalid")
         .into_rgba8();
 
-    let color = if phase == crate::state::Phase::Recording {
-        [230, 40, 40]
-    } else {
-        [255, 255, 255]
+    // Transcribing needs its own colour: it can run for seconds in prompt mode
+    // and the hotkey is inert throughout, so an idle-looking icon reads as a
+    // hang.
+    let color = match phase {
+        crate::state::Phase::Recording => [230, 40, 40],
+        crate::state::Phase::Transcribing => [235, 165, 40],
+        crate::state::Phase::Idle => [255, 255, 255],
     };
     for pixel in img.pixels_mut() {
         if pixel[3] > 0 {
@@ -57,14 +60,16 @@ mod tests {
     use crate::state::Phase;
 
     #[test]
-    fn icon_is_white_except_while_recording() {
+    fn each_phase_has_its_own_colour() {
         let (idle, _, _) = icon_rgba(Phase::Idle);
         let (transcribing, _, _) = icon_rgba(Phase::Transcribing);
         let (recording, _, _) = icon_rgba(Phase::Recording);
 
-        assert_eq!(idle, transcribing);
         assert!(has_only_color(&idle, [255, 255, 255]));
+        assert!(has_only_color(&transcribing, [235, 165, 40]));
         assert!(has_only_color(&recording, [230, 40, 40]));
+        assert_ne!(idle, transcribing);
+        assert_ne!(transcribing, recording);
     }
 
     fn has_only_color(rgba: &[u8], color: [u8; 3]) -> bool {

@@ -125,13 +125,27 @@ sudo apt install build-essential pkg-config libasound2-dev libdbus-1-dev \
 
 ## Usage
 
-Default hotkey is **Ctrl+Space**: press to start recording, press again to stop
-and transcribe. A short beep marks start and stop.
+Two shortcuts, each a press to start and a press again to stop. A short beep
+marks both ends.
 
-The tray microphone stays visible. Its menu starts or stops dictation, displays
-the current shortcut, opens the shortcut selector, selects `Ctrl+V` or
-`Ctrl+Shift+V` for automatic paste, and quits the app. The microphone is red
-while recording and white at other times.
+- **Ctrl+Space** is raw mode: the transcript is pasted exactly as recognised.
+- **Ctrl+Alt+Space** is prompt mode: the transcript is restructured into a
+  prompt before pasting, through the model named by `cleanup_model`, which reads
+  `ANTHROPIC_API_KEY` from the environment. Punctuation, technical terms and
+  paragraph structure are corrected; wording, register, language and the
+  speaker's purpose are left alone. Dictations longer than `cleanup_max_words`
+  paste raw instead.
+
+The tray microphone is white when idle, red while recording, and amber while
+transcribing. Its menu switches prompt mode off, copies the last output or the
+last raw transcript, lists recent dictations, dictates by mouse, and holds the
+shortcut and paste settings. A row appears at the top of the menu only when the
+speech server is unreachable or prompt mode has no API key.
+
+Every dictation is appended to `~/.local/share/voice-dictate/history.jsonl`,
+which keeps the transcript and the rewritten prompt separately, pruned to
+`history_retention_days` at startup.
+
 `install.sh` enables autostart at login on Linux.
 
 ## License

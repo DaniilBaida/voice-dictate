@@ -5,25 +5,39 @@
 //! combo through the desktop's portal dialog on first run; the compositor then
 //! owns the binding. We propose a preferred trigger derived from the config.
 
+use crate::state::Mode;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-const SHORTCUT_ID: &str = "toggle-dictation";
+pub const SHORTCUT_ID: &str = "toggle-dictation";
+pub const PROMPT_SHORTCUT_ID: &str = "toggle-dictation-prompt";
 
 pub async fn run(
     hotkey: String,
-    toggle: Arc<dyn Fn() + Send + Sync>,
+    prompt_hotkey: String,
+    toggle: Arc<dyn Fn(Mode) + Send + Sync>,
     current_shortcut: Arc<Mutex<String>>,
+    current_prompt_shortcut: Arc<Mutex<String>>,
 ) {
-    if let Err(e) = run_inner(hotkey, toggle, current_shortcut).await {
+    if let Err(e) = run_inner(
+        hotkey,
+        prompt_hotkey,
+        toggle,
+        current_shortcut,
+        current_prompt_shortcut,
+    )
+    .await
+    {
         tracing::error!("global shortcuts portal: {e:#}");
     }
 }
 
 async fn run_inner(
     hotkey: String,
-    toggle: Arc<dyn Fn() + Send + Sync>,
+    prompt_hotkey: String,
+    toggle: Arc<dyn Fn(Mode) + Send + Sync>,
     current_shortcut: Arc<Mutex<String>>,
+    current_prompt_shortcut: Arc<Mutex<String>>,
 ) -> anyhow::Result<()> {
     use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
     use futures_util::StreamExt;
@@ -38,24 +52,39 @@ async fn run_inner(
     let trigger = to_portal_trigger(&hotkey);
     let shortcut = NewShortcut::new(SHORTCUT_ID, "Start/stop voice dictation")
         .preferred_trigger(trigger.as_deref());
+    let prompt_trigger = to_portal_trigger(&prompt_hotkey);
+    let prompt_shortcut = NewShortcut::new(PROMPT_SHORTCUT_ID, "Start/stop dictation in prompt mode")
+        .preferred_trigger(prompt_trigger.as_deref());
 
     let response = global
-        .bind_shortcuts(&session, &[shortcut], None)
+        .bind_shortcuts(&session, &[shortcut, prompt_shortcut], None)
         .await?
         .response()?;
-    update_current_shortcut(response.shortcuts(), &current_shortcut);
+    update_current_shortcut(response.shortcuts(), SHORTCUT_ID, &current_shortcut);
+    update_current_shortcut(
+        response.shortcuts(),
+        PROMPT_SHORTCUT_ID,
+        &current_prompt_shortcut,
+    );
 
     tracing::info!("global shortcut bound via portal (waiting for activations)");
 
     loop {
         tokio::select! {
             Some(activation) = activated.next() => {
-                if activation.shortcut_id() == SHORTCUT_ID {
-                    toggle();
+                match activation.shortcut_id() {
+                    SHORTCUT_ID => toggle(Mode::Raw),
+                    PROMPT_SHORTCUT_ID => toggle(Mode::Prompt),
+                    other => tracing::warn!("unknown portal shortcut: {other}"),
                 }
             }
             Some(event) = changed.next() => {
-                update_current_shortcut(event.shortcuts(), &current_shortcut);
+                update_current_shortcut(event.shortcuts(), SHORTCUT_ID, &current_shortcut);
+                update_current_shortcut(
+                    event.shortcuts(),
+                    PROMPT_SHORTCUT_ID,
+                    &current_prompt_shortcut,
+                );
             }
         }
     }
@@ -63,9 +92,10 @@ async fn run_inner(
 
 fn update_current_shortcut(
     shortcuts: &[ashpd::desktop::global_shortcuts::Shortcut],
+    id: &str,
     current_shortcut: &Mutex<String>,
 ) {
-    if let Some(shortcut) = shortcuts.iter().find(|item| item.id() == SHORTCUT_ID) {
+    if let Some(shortcut) = shortcuts.iter().find(|item| item.id() == id) {
         *current_shortcut.lock().unwrap() = display_shortcut(shortcut.trigger_description());
     }
 }

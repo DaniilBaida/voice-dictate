@@ -1,5 +1,15 @@
 use std::sync::{Arc, Mutex};
 
+/// Which hotkey started the dictation. Captured when recording begins, so the
+/// stop press uses the mode the speaker chose at the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Paste the transcript exactly as the recogniser returned it.
+    Raw,
+    /// Restructure the transcript into a prompt before pasting.
+    Prompt,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Idle,

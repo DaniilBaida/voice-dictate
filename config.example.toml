@@ -10,11 +10,21 @@ model = "default"
 # Language code (ISO 639-1). Empty = auto-detect.
 language = ""
 
-# Vocabulary hint to bias transcription (e.g. "Python, Rust, TypeScript")
-prompt = ""
+# Punctuation and capitalisation added by the ASR model itself
+automatic_punctuation = false
 
-# Global hotkey. Modifiers: CmdOrCtrl, Ctrl, Shift, Alt, Super
+# Raw mode: paste the transcript exactly as recognised
 hotkey = "Ctrl+Space"
+
+# Prompt mode: restructure the transcript before pasting
+prompt_hotkey = "Ctrl+Alt+Space"
+
+# Model that does the restructuring. Reads ANTHROPIC_API_KEY from the environment.
+cleanup_model = "claude-haiku-4-5"
+
+# Longer dictations paste raw instead, because a rewrite that long starts
+# dropping sentences
+cleanup_max_words = 600
 
 # Paste shortcut. Supported values: Ctrl+V, Ctrl+Shift+V
 paste_shortcut = "Ctrl+V"

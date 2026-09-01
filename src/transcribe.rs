@@ -6,11 +6,11 @@ pub struct Transcriber {
     server_url: String,
     model: String,
     language: Option<String>,
-    prompt: Option<String>,
+    automatic_punctuation: bool,
 }
 
 impl Transcriber {
-    pub fn new(server_url: &str, model: &str, language: &str, prompt: &str) -> Self {
+    pub fn new(server_url: &str, model: &str, language: &str, automatic_punctuation: bool) -> Self {
         Self {
             client: reqwest::Client::new(),
             server_url: server_url.trim_end_matches('/').to_string(),
@@ -20,11 +20,7 @@ impl Transcriber {
             } else {
                 Some(language.to_string())
             },
-            prompt: if prompt.is_empty() {
-                None
-            } else {
-                Some(prompt.to_string())
-            },
+            automatic_punctuation,
         }
     }
 
@@ -34,13 +30,14 @@ impl Transcriber {
             .mime_str("audio/wav")?;
         let mut form = Form::new()
             .part("file", audio)
-            .text("model", self.model.clone());
+            .text("model", self.model.clone())
+            .text(
+                "automatic_punctuation",
+                self.automatic_punctuation.to_string(),
+            );
 
         if let Some(lang) = &self.language {
             form = form.text("language", lang.clone());
-        }
-        if let Some(p) = &self.prompt {
-            form = form.text("prompt", p.clone());
         }
 
         let response = self
